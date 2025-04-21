@@ -151,9 +151,6 @@ export default function Home() {
                         </>
                       )}
                     </div>
-                    <div className="mt-2 text-gray-600 dark:text-gray-300">
-                      {article.text}
-                    </div>
                   </div>
                 );
               })}

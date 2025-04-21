@@ -6,11 +6,11 @@ interface Article {
   title: string;
   date: string;
   url: string;
-  summary: string;
+  text: string;
 }
 
 interface SearchResponse {
-  results: string[];
+  results: Article[];
   response: string;
   metadata: {
     search_used: boolean;
@@ -55,12 +55,7 @@ export default function Home() {
       const aiResult = data.response;
       setAiResponse(aiResult);
 
-      const parsedArticles = data.results.slice(1).map(articleStr => {
-        const [title, date, url, summary] = articleStr.split(' | ').map(s => s.replace(/^"|"$/g, ''));
-        return { title, date, url, summary };
-      });
-
-      setArticles(parsedArticles);
+      setArticles(data.results);
       setMetadata(data.metadata);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'An error occurred');
@@ -155,6 +150,9 @@ export default function Home() {
                           </span>
                         </>
                       )}
+                    </div>
+                    <div className="mt-2 text-gray-600 dark:text-gray-300">
+                      {article.text}
                     </div>
                   </div>
                 );

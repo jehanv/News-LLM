@@ -7,6 +7,10 @@ from datetime import datetime, timedelta
 from dotenv import load_dotenv
 from exa_py import Exa
 from utils import *
+from fastapi import FastAPI, HTTPException
+from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
+from pydantic import BaseModel
 
 """
 Augmented LLM Script with Function Calling
@@ -365,6 +369,71 @@ class AugmentedLLM:
                 }
             }
         }
+
+# Create FastAPI app
+app = FastAPI(title="News LLM API")
+
+# Add CORS middleware
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
+@app.get("/")
+async def root():
+    return JSONResponse({
+        "status": "ok",
+        "message": "News LLM API is running",
+        "endpoints": {
+            "/": "This help message",
+            "/api/search": "POST - Search for news articles"
+        }
+    })
+
+class SearchQuery(BaseModel):
+    query: str
+
+@app.post("/api/search")
+async def search(query: SearchQuery):
+    try:
+        # Initialize tools
+        search_tool = ExaSearchTool(api_key=EXA_API_KEY)
+        augmented_llm = AugmentedLLM(search_tool=search_tool, verbose=False)
+        
+        # Generate response
+        result = augmented_llm.generate_response(query.query)
+        
+        # Format the response into articles
+        articles = []
+        if result["search_used"] and result["num_search_results"] > 0:
+            # Format each search result as an article
+            for search_result in result.get("search_results", []):
+                article = {
+                    "title": search_result["title"],
+                    "date": search_result["date"],
+                    "url": search_result["url"],
+                    "text": search_result["text"]
+                }
+                articles.append(article)
+        else:
+            # Use the response as a single article
+            articles.append({
+                "title": "AI Response",
+                "date": datetime.today().strftime('%B %d, %Y'),
+                "url": "#",
+                "text": result["response"]
+            })
+        
+        return {
+            "results": articles,
+            "response": result["response"],
+            "metadata": result["metadata"]
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
 
 def main():
     """Main function to run the augmented LLM"""

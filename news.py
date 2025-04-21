@@ -11,6 +11,11 @@ from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel
+import logging
+
+# Configure logging
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
 
 """
 Augmented LLM Script with Function Calling
@@ -33,6 +38,10 @@ load_dotenv()
 
 # Exa API configuration
 EXA_API_KEY = os.environ.get("EXA_API_KEY", "")
+
+# Validate API key
+if not EXA_API_KEY:
+    logger.error("EXA_API_KEY is not set")
 
 class ExaSearchTool:
     """Tool for searching the web using Exa API"""
@@ -112,7 +121,7 @@ class ExaSearchTool:
             return formatted_results
             
         except Exception as e:
-            print(f"Search error: {e}")
+            logger.error(f"Search error: {e}")
             return []
 
 class AugmentedLLM:
@@ -258,14 +267,14 @@ class AugmentedLLM:
                         query_explanation = function_args.get('explanation', "No explanation provided")
                         
                 except (json.JSONDecodeError, AttributeError, KeyError) as e:
-                    print(f"Error parsing function call: {e}")
+                    logger.error(f"Error parsing function call: {e}")
             
             if self.verbose:
-                print(f"Search decision: {should_search}, Reasoning: {search_reasoning}")
-                print(f"Optimized query: '{optimized_query}', Explanation: {query_explanation}")
+                logger.info(f"Search decision: {should_search}, Reasoning: {search_reasoning}")
+                logger.info(f"Optimized query: '{optimized_query}', Explanation: {query_explanation}")
         else:
             # If no tool call was made, fallback to assuming no search is needed
-            print("No tool calls were made by the model")
+            logger.info("No tool calls were made by the model")
         
         return should_search, optimized_query
     
@@ -328,7 +337,7 @@ class AugmentedLLM:
         else:
             # Standard prompt without external search results
             if self.verbose:
-                print("Answering without external search")
+                logger.info("Answering without external search")
             system_message = """You are a helpful AI assistant. Provide a direct and specific answer to the user's query based on your knowledge.
             
             IMPORTANT GUIDELINES:
@@ -401,50 +410,74 @@ class SearchQuery(BaseModel):
     query: str
 
 @app.post("/api/search")
-async def search(query: SearchQuery):
+async def search_news(query: SearchQuery):
+    """Search for news articles"""
     try:
+        logger.info(f"Received search query: {query.query}")
+        
+        # Log API key status (without revealing the keys)
+        logger.info(f"EXA_API_KEY present: {bool(EXA_API_KEY)}")
+        
+        if not EXA_API_KEY:
+            raise ValueError("Missing required API keys")
+
         # Initialize tools
+        logger.info("Initializing search tool...")
         search_tool = ExaSearchTool(api_key=EXA_API_KEY)
-        augmented_llm = AugmentedLLM(search_tool=search_tool, verbose=False)
+        
+        logger.info("Initializing LLM...")
+        augmented_llm = AugmentedLLM(search_tool=search_tool, verbose=True)
         
         # Generate response
+        logger.info("Generating response...")
         result = augmented_llm.generate_response(query.query)
+        logger.info("Response generated successfully")
         
-        # Format the response into articles
+        # Format articles
         articles = []
-        if result["search_used"] and result["num_search_results"] > 0:
-            # Format each search result as an article
+        if result.get("search_used") and result.get("num_search_results", 0) > 0:
+            logger.info(f"Processing {result.get('num_search_results', 0)} search results")
             for search_result in result.get("search_results", []):
-                article = {
-                    "title": search_result["title"],
-                    "date": search_result["date"],
-                    "url": search_result["url"],
-                    "text": search_result["text"]
-                }
-                articles.append(article)
-        else:
-            # Use the response as a single article
-            articles.append({
-                "title": "AI Response",
-                "date": datetime.today().strftime('%B %d, %Y'),
-                "url": "#",
-                "text": result["response"]
-            })
+                try:
+                    articles.append({
+                        "title": search_result.get("title", ""),
+                        "url": search_result.get("url", ""),
+                        "date": search_result.get("date", "")
+                    })
+                except Exception as article_error:
+                    logger.error(f"Error formatting article: {article_error}")
+                    continue
         
-        return {
+        response_data = {
             "results": articles,
-            "response": result["response"],
-            "metadata": result["metadata"]
+            "response": result.get("response", ""),
+            "metadata": {
+                "search_used": result.get("search_used", False),
+                "num_search_results": result.get("num_search_results", 0),
+                "execution_time": result.get("execution_time", 0),
+                "date_range": result.get("date_range", {"from": "", "to": ""})
+            }
         }
+        logger.info("Successfully prepared response")
+        return response_data
+        
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        import traceback
+        error_trace = traceback.format_exc()
+        logger.error(f"Error in search_news: {str(e)}\nTraceback:\n{error_trace}")
+        if "api_key" in str(e).lower():
+            raise HTTPException(status_code=500, detail="API key configuration error")
+        raise HTTPException(status_code=500, detail=f"Search error: {str(e)}")
 
 def main():
     """Main function to run the augmented LLM"""
     try:
         # Initialize tools
+        logger.info("Initializing search tool...")
         search_tool = ExaSearchTool(api_key=EXA_API_KEY)
-        augmented_llm = AugmentedLLM(search_tool=search_tool, verbose=False)
+        
+        logger.info("Initializing LLM...")
+        augmented_llm = AugmentedLLM(search_tool=search_tool, verbose=True)
         
         # Check if query is provided as command-line argument
         if len(sys.argv) > 1:

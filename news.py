@@ -380,6 +380,11 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+@app.get("/health")
+async def health_check():
+    """Health check endpoint"""
+    return {"status": "ok", "message": "Server is running"}
+
 @app.get("/")
 async def root():
     return JSONResponse({
@@ -387,6 +392,7 @@ async def root():
         "message": "News LLM API is running",
         "endpoints": {
             "/": "This help message",
+            "/health": "Health check endpoint",
             "/api/search": "POST - Search for news articles"
         }
     })

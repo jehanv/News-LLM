@@ -1,6 +1,7 @@
 'use client';
 
 import { useState } from 'react';
+import { config } from './config';
 
 interface Article {
   title: string;
@@ -29,15 +30,29 @@ export default function Home() {
   const [articles, setArticles] = useState<Article[]>([]);
   const [aiResponse, setAiResponse] = useState<string>('');
   const [metadata, setMetadata] = useState<SearchResponse['metadata'] | null>(null);
+  const [isWakingUp, setIsWakingUp] = useState(false);
+
+  const checkBackendHealth = async () => {
+    try {
+      const response = await fetch(`${config.apiUrl}/health`);
+      return response.ok;
+    } catch (error) {
+      return false;
+    }
+  };
 
   const handleSearch = async () => {
     if (!query.trim()) return;
 
     setLoading(true);
     setError(null);
+    setArticles([]);
+    setAiResponse('');
+    setMetadata(null);
 
     try {
-      const response = await fetch('/api/news', {
+      // First attempt
+      let response = await fetch('/api/news', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -45,21 +60,52 @@ export default function Home() {
         body: JSON.stringify({ query }),
       });
 
+      // If first attempt fails, check if backend needs to wake up
       if (!response.ok) {
-        throw new Error('Failed to fetch news');
+        setIsWakingUp(true);
+        // Wait for backend to wake up (up to 30 seconds)
+        for (let i = 0; i < 6; i++) {
+          const isHealthy = await checkBackendHealth();
+          if (isHealthy) {
+            // Retry the search once backend is awake
+            response = await fetch('/api/news', {
+              method: 'POST',
+              headers: {
+                'Content-Type': 'application/json',
+              },
+              body: JSON.stringify({ query }),
+            });
+            break;
+          }
+          await new Promise(resolve => setTimeout(resolve, 5000)); // Wait 5 seconds between checks
+        }
+        setIsWakingUp(false);
+      }
+
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.error || `Error: ${response.status}`);
       }
 
       const data: SearchResponse = await response.json();
       
+      if (!data || !data.results || !Array.isArray(data.results)) {
+        throw new Error('Invalid response format from server');
+      }
+
       const aiResult = data.response;
       setAiResponse(aiResult);
-
       setArticles(data.results);
       setMetadata(data.metadata);
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'An error occurred');
+      console.error('Search error:', err);
+      setError(err instanceof Error ? err.message : 'An error occurred while fetching news');
+      setArticles([]);
+      setAiResponse('');
+      setMetadata(null);
     } finally {
       setLoading(false);
+      setIsWakingUp(false);
     }
   };
 
@@ -96,6 +142,14 @@ export default function Home() {
         {error && (
           <div className="mb-8 p-6 bg-red-50 border-l-4 border-red-500 rounded-r-2xl text-red-700 dark:bg-red-950 dark:text-red-200">
             {error}
+          </div>
+        )}
+
+        {loading && (
+          <div className="mb-8 p-6 bg-emerald-50 border-l-4 border-emerald-500 rounded-r-2xl text-emerald-700 dark:bg-emerald-950 dark:text-emerald-200">
+            {isWakingUp ? 
+              "Waking up the server... This may take up to 30 seconds..." :
+              "Searching..."}
           </div>
         )}
 

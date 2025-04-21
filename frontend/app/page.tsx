@@ -6,7 +6,6 @@ interface Article {
   title: string;
   date: string;
   url: string;
-  text: string;
 }
 
 interface SearchResponse {

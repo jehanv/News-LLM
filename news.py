@@ -106,7 +106,6 @@ class ExaSearchTool:
                 formatted_results.append({
                     "title": result.title,
                     "url": result.url,
-                    "text": text,
                     "date": date_str
                 })
             
@@ -136,8 +135,7 @@ class AugmentedLLM:
         for i, result in enumerate(results, 1):
             formatted_text += f"[{i}] {result['title']}\n"
             formatted_text += f"URL: {result['url']}\n"
-            formatted_text += f"Date: {result['date']}\n"
-            formatted_text += f"Summary: {result['text']}\n\n"
+            formatted_text += f"Date: {result['date']}\n\n"
         
         return formatted_text
     

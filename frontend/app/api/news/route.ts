@@ -1,4 +1,5 @@
 import { NextResponse } from 'next/server';
+import { config } from '../../config';
 
 export async function POST(request: Request) {
   try {
@@ -12,7 +13,7 @@ export async function POST(request: Request) {
       );
     }
 
-    const response = await fetch('http://localhost:8000/api/search', {
+    const response = await fetch(`${config.apiUrl}/api/search`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
